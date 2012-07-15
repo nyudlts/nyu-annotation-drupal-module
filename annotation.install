@@ -1,0 +1,42 @@
+<?php
+
+/**
+ * Implementation of hook_schema().
+ */
+function annotation_schema() {
+  $schema = array();
+  $schema['annotation'] = array(
+    'fields' => array(
+      'did' => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+      ),  
+      'nid' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'status' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('did'),
+    'indexes' => array(
+      'nid' => array('nid'),
+      'status' => array('status'),
+    ),
+  );
+  return $schema;
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function annotation_uninstall() {
+  // Remove all Annotation-related variables.
+  db_delete('variable')->condition('name', 'annotation_%', 'LIKE')->execute();
+}

@@ -1,0 +1,105 @@
+.annotations {
+  font-size: 13px;
+  margin-top: .5em;
+  padding-right: .5em;
+  position: relative;
+}
+
+.annotation-title {
+  font-size: small;
+  color: #777;
+}
+
+.annotation-body {
+  font-size: small;
+  color: #000;
+  margin-bottom: .3em;
+}
+
+.annotation div.content {
+  border: 1px solid rgba(0,0,0,.07);
+  padding: .5em 0;
+  width: 98%; 
+}
+
+.annotation div.content:hover {
+  background-color: #E5E5E5;
+  border-color: rgba(0, 0, 0, .2);
+  cursor:pointer;
+}
+
+.annotation img.avatar {
+  left: 0;
+  padding-left: 5px;
+  position: absolute;
+  width: 24px;
+  height: 24px;
+}
+
+.annotation .annotation-creator {
+  display: block;
+  margin-left: 32px;
+  text-align: left;
+  font-weight: bold;
+}
+
+.annotation .annotation-timestamp {
+ font-size: 10px;
+  color: #666;
+  font-size: 10px;
+  margin: 3px 0 0 32px;
+  display: block;
+  margin-left: 32px;
+  text-align: left;
+}
+
+.annotation .annotation-body {
+  white-space: normal;
+  margin-top: .5em;
+  margin-left: .5em;
+}
+
+.annotation .annotation-footer {
+  font-size: 11px;
+  margin-top: .7em;
+  margin-left: .5em;
+}
+
+.annotation .annotation-footer a {
+  color: #36c;
+}
+
+.annotation-active .content, .annotation-active div.content:hover {
+  background-color: #fcfac6;
+  border-color: #ffe572;
+  cursor:default; 
+}
+
+.annotation-input-pane textarea {
+  border: 1px solid #C8C8C8;
+  box-sizing: border-box;
+  font-size: 13px;
+  margin: 0;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  outline-width: 0!important;
+  padding: 4px;
+  resize: none;
+  width: 100%;
+  background-color: white;
+  padding: 7px;
+  position: relative;
+  zoom: 1;
+  white-space: normal;
+  color: #ccc;
+  width: 99%;
+  -webkit-appearance: textarea;  
+}
+
+.annotation-input-buttons {
+  margin-top: .5em;
+}
+
+.annotation.hidden {
+  display: none;  
+}

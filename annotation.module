@@ -1,0 +1,410 @@
+<?php
+
+/**
+ * @file
+ * Integration with Annotation service.
+ */
+
+/*
+ * Implementation of hook_menu
+ * http://api.drupal.org/api/drupal/developer--hooks--core.php/function/hook_menu/7
+ */
+function annotation_menu() {
+  return array(
+    'admin/config/services/annotation' => array(
+      'title' => 'Annotation options',
+      'description' => 'Annotation options',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('annotation_settings'),
+      'access arguments' => array('administer annotation'),
+      'type' => MENU_LOCAL_TASK,
+      'weight' => 50,
+      'file' => 'inc/annotation.admin.inc',
+    ),
+    'annotation/closewindow' => array(
+      'title' => 'Please wait',
+      'description' => 'Once the user logs in through the Annotation login workflow, they are redirected here to automatically close the popup window.',
+      'access arguments' => array('access content'),
+      'page callback' => 'annotation_closewindow',
+      'file' => 'inc/annotation.admin.inc',
+      'type' => MENU_CALLBACK,
+    ),
+  );  
+}
+
+/**
+ * Implements hook_help().
+ * TODO: Help the help section
+ */
+function annotation_help($path, $arg) {
+  switch ($path) {
+  case 'admin/help#annotation':
+    $output = '<p>HELP ME!</p>';
+    return $output;
+  case 'admin/config/services/annotation':
+    return '<p>HELP ME!</p>';
+  }
+}
+
+/**
+ * Implements hook_permission().
+ */
+function annotation_permission() {
+  return array(
+    'administer annotation' => array(
+      'title' => t('Administer Annotation'),
+      'description' => t('Perform administrative actions with Annotation.'),
+    ),
+    'view annotation annotations' => array(
+      'title' => t('View Annotation annotations'),
+      'description' => t('Allows access to view Annotation annotations.')
+    ),
+    'display annotation comments on profile' => array(
+      'title' => t('Annotation annotations in profile'),
+      'description' => t('When enabled, will display Annotation comments on the profiles of users belonging to this role.'),
+    ),
+    'toggle annotation annotations' => array(
+      'title' => t('Toggle Annotation annotations'),
+      'description' => t('When enabled, will allow users to toggle annotations on and off on nodes.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_theme().
+ */
+function annotation_theme() {
+  return array(
+    'annotation_noscript' => array(
+      'variables' => array('annotation' => NULL),
+      'file' => 'inc/annotation.theme.inc'
+    ),
+  );
+}
+
+/**
+ * Implements hook_element_info().
+ */
+function annotation_element_info() {
+  $types['annotation'] = array(
+    '#annotation' => array(),
+    '#theme_wrappers' => array('annotation_noscript', 'container'),
+    '#attributes' => array('id' => 'annotation_thread'),
+    '#post_render' => array('annotation_element_post_render'),
+  );
+  return $types;
+}
+
+/**
+ * Post render function of the Annotation element to inject the Annotation JavaScript.
+ */
+function annotation_element_post_render($children, &$element) {
+
+  /*
+   * Construct the settings to be passed in for Annotation.
+   */
+  $annotation = array(
+    'environment' => $element['#annotation']['environment'],
+    'url' => $element['#annotation']['url'],
+    'title' => $element['#annotation']['title'],
+    'identifier' => $element['#annotation']['identifier'],
+  );
+
+  if (isset($element['#annotation']['developer']) && $element['#annotation']['developer']) {
+    $annotation['developer'] = 1;
+  }
+
+  /*
+   * If the user is logged in, we can inject the username and email for Annotation.
+   */
+  global $user;
+  if (variable_get('annotation_inherit_login', TRUE) && $user->uid > 0) {
+    $annotation['name'] = $user->name;
+    $annotation['email'] = $user->mail;
+  }
+
+  /*
+   * Add the annotation.js and all the settings to process the JavaScript and load Annotation.
+   */
+  $element['#attached']['js'] = array(
+    drupal_get_path('module', 'annotation') . '/js/annotation.js' => array(),
+    array(
+      'type' => 'setting',
+      'data' => array(
+        'annotation' => $annotation,
+      ),
+    ),
+  );
+  
+  /*
+   * Add Annotation CSS
+   */
+  $element['#attached']['css'] = array(drupal_get_path('module', 'annotation') . '/css/annotation.css');
+  
+  return $children;
+}
+
+/**
+ * Implements hook_node_load().
+ */
+function annotation_node_load($nodes, $types) {
+  
+  /*
+   * Make sure we only load Annotation on nodes of the desired types.
+   */
+  $annotation_types = variable_get('annotation_node_types', array());
+  
+   /*
+    * Load Annotation into the nodes.
+    */
+  foreach ($nodes as &$node) {
+    if (!empty($annotation_types[$node->type])) {
+    
+      /*
+       * Apply the Annotation status to the node.
+       */
+      $status = db_query("SELECT status FROM {annotation} WHERE nid = :nid", array(':nid' => $node->nid))->fetchObject();
+      
+
+      $node->annotation['status'] = isset($status->status) ? (bool)$status->status : TRUE;
+
+      /*
+       * Build the absolute URL without the alias for the annotation_url flag.
+       */
+      $node->annotation['url'] = url( 'node/' . $node->nid, array( 'absolute' => TRUE) );
+
+      /*
+       * Build the title.
+       */
+      $node->annotation['title'] = check_plain($node->title);
+
+      /*
+       * Provide the identifier.
+       */
+      $node->annotation['identifier'] = 'node/' . $node->nid;
+      
+      /*
+       * Provide the server
+       */
+      $node->annotation['environment'] = variable_get('annotation_environment_url', '');      
+
+      /*
+       * The developer flag must always be set when the node is unpublished.
+       */
+      if ($node->status == 0) {
+        $node->annotation['developer'] = 1;
+      }
+      elseif ($developer = variable_get('annotation_developer', FALSE)) {
+        $node->annotation['developer'] = intval($developer);
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_node_view().
+ */
+function annotation_node_view($node, $view_mode) {
+  if (isset($node->annotation) && user_access('view annotation annotations') && $node->annotation['status'] == 1) {
+    switch ($view_mode) {
+      case 'full':
+      	// Inject Annotation into the node object.
+      	switch (variable_get('annotation_location', 'content_area')) {
+      		case 'content_area':
+	          // Inject into the node content.
+	          $node->content['annotation'] = array(
+	            '#type' => 'annotation',
+	            '#annotation' => $node->annotation,
+	            '#weight' => variable_get('annotation_weight', 50),
+	          );
+      			break;
+      	}
+        break;
+      case 'teaser':
+        // Display the Annotation link.
+        $links['annotation_comments_num'] = array(
+          'title' => t('Annotations'),
+          'href' => 'node/' . $node->nid,
+          'fragment' => 'annotation_thread',
+          'attributes' => array(
+          'data-annotation-identifier' => 'node/' . $node->nid,
+          ),
+        );
+        $node->content['links']['annotation'] = array(
+          '#theme' => 'links',
+          '#links' => $links,
+          '#attributes' => array(
+            'class' => array('links', 'inline'),
+          ),
+        );
+
+        // Attach annotation.js to load the Annotation comment count JavaScript.
+        $node->content['links']['#attached']['js'][] = drupal_get_path('module', 'annotation') . '/js/annotation.js';
+        $node->content['links']['#attached']['js'][] = array(
+          'data' => array('annotationComments' => $node->annotation['domain']),
+          'type' => 'setting',
+        );
+        break;
+    }
+  }
+}
+
+/**
+ * Implements hook_node_delete().
+ */
+function annotation_node_delete($node) {
+  db_delete('annotation')->condition('nid', $node->nid)->execute();
+}
+
+/**
+ * Implements hook_node_insert().
+ */
+function annotation_node_insert($node) {
+  // Clear the value from the database.
+  annotation_node_delete($node);
+
+  // Write the value only if it's disabled (default is enabled).
+  if (isset($node->annotation_status) && $node->annotation_status == FALSE) {
+    $data = array(
+      'nid' => $node->nid,
+      'status' => $node->annotation_status,
+    );
+    drupal_write_record('annotation', $data);
+  }
+}
+
+/**
+ * Implements hook_node_update().
+ */
+function annotation_node_update($node) {
+  // Update is the same as insert.
+  annotation_node_insert($node);
+}
+
+/**
+ * Implements hook_user_load().
+ */
+function annotation_user_load($users) {
+  // Check which Annotation domain to use.
+  $domain = variable_get('annotation_domain', '');
+  if (!empty($domain)) {
+    foreach ($users as &$account) {
+      // Only show on the profile if desired. Don't show on the administrator's profile.
+      if (user_access('display annotation annotations on profile', $account) && $account->uid != 1) {
+        // Save the data to the user object.
+        $account->annotation = array('domain' => $domain);
+
+        // Build the absolute URL without the alias for the disqus_url flag.
+        $account->annotation['url'] = url('user/' . $account->uid, array(
+          'absolute' => TRUE,
+        ));
+
+        // Build the title.
+        $account->annotation['title'] = check_plain($account->name);
+
+        // Provide the identifier.
+        $account->annotation['identifier'] = 'user/' . $account->uid;
+
+        // Inject the script.
+        if ($developer = variable_get('annotation_developer', FALSE)) {
+          $account->annotation['developer'] = $developer;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_user_view().
+ */
+function annotation_user_view($account, $view_mode, $langcode) {
+  if (isset($account->annotation) && $view_mode == 'full') {
+    // Inject Annotation into the user object.
+    switch (variable_get('annotation_location', 'content_area')) {
+      case 'content_area':
+        $account->content['annotation'] = array(
+          '#type' => 'annotation',
+          '#annotation' => $account->annotation,
+          '#weight' => variable_get('annotation_weight', 50),
+          '#access' => user_access('view annotation comments'),
+        );
+        break;
+    }
+  }
+}
+
+/**
+ * Implementation of hook_form_alter().
+ */
+function annotation_form_alter(&$form, $form_state, $form_id) {
+
+  /*
+   * Allow toggling the annotations on or off per node from the node edit form.
+   */
+  if (!empty($form['#node_edit_form'])) {
+  
+    dpm('node_edit_form');
+  
+    $node = $form['#node'];
+    
+    /*
+     * Only display the toggle Annotation annotations setting if comments are available
+     * for the given node type.
+     */
+    $types = variable_get('annotation_node_types', array());
+    if (isset($types[$node->type]) && !empty($types[$node->type])) {
+      // Add the Annotation settings into the Comment settings fieldset if it exists.
+      if (!isset($form['comment_settings'])) {
+        $form['comment_settings'] = array(
+          '#type' => 'fieldset',
+          '#access' => user_access('toggle annotation annotations'),
+          '#title' => t('Annotation settings'),
+          '#collapsible' => TRUE,
+          '#collapsed' => TRUE,
+          '#group' => 'additional_settings',
+          '#weight' => 30,
+        );
+      }
+      else {
+        if (isset($form['comment_settings']['comment'])) {
+          $form['comment_settings']['comment']['#access'] = $form['comment_settings']['#access'];
+          $form['comment_settings']['#access'] = true;
+        }
+      }
+      $form['comment_settings']['annotation_status'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Annotation comments'),
+        '#description' => t('Users can post annotation using <a href="@annotation">Annotation</a>.', array('@annotation' => 'http://annotation.nyu.edu')),
+        '#default_value' => isset($node->annotation['status']) ? $node->annotation['status'] : TRUE,
+        '#access' => user_access('toggle annotation annotations'),
+      );
+    }
+  }
+}
+
+/**
+ * Creates an instance of the Annotation PHP API.
+ *
+ * @param $user_api_key
+ *   The User API Key.
+ * @param $forum_api_key
+ *   The Forum API key.
+ *
+ * @return
+ *   The instance of the Annotation API.
+ */
+function annotation($user_api_key = NULL, $forum_api_key = NULL) {
+  module_load_include('php', 'annotation', 'annotation');
+  return new Annotation($user_api_key, $forum_api_key);
+}
+
+/**
+ * Implementation of hook_views_api().
+ */
+function annotation_views_api() {
+  return array('api' => 3);
+}
+
+function annotation_server_status() {
+  // Nothing for now
+}
