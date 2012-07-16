@@ -1,10 +1,9 @@
 name = Annotation
 description = Annotation
-package = DLTS
 core = 7.x
 
 files[] = annotation.php
 
 dependencies[] = dlts_shapes
 
-configure = admin/config/services/annotation
+configure = admin/config/annotation
